@@ -7,7 +7,7 @@ df = pd.read_csv("scopus.csv", engine='python')
 df.fillna("", inplace=True)
 df["combined_text"] = df["Title"] + " " + df["Abstract"] + " " + df["Author Keywords"] + " " + df["Index Keywords"]
 
-model = BERTopic(nr_topics=12, verbose=True) 
+model = BERTopic(min_topic_size=5, verbose=True) 
 docs = df["combined_text"].tolist() 
 topics, probabilities = model.fit_transform(docs)
 
@@ -21,8 +21,8 @@ with open("topics.txt", "w", encoding="utf-8") as f:
 
 print("Topics saved to topics.txt")
 
-model.visualize_topics()
-model.visualize_barchart()
+topics_fig = model.visualize_topics()
+barchart_fig = model.visualize_barchart()
 
 topics_fig.write_html("topics.html")  
 barchart_fig.write_html("barchart.html") 
