@@ -1,13 +1,21 @@
-
-
+import os
+import numpy as np
+import random
 import pandas as pd
 import nltk
 from bertopic import BERTopic
 from nltk.corpus import stopwords
+from hdbscan import HDBSCAN
+from sklearn.feature_extraction.text import CountVectorizer
+from umap import UMAP
 
 nltk.download("stopwords")
 stop_words = set(stopwords.words("english"))
 stop_words.update(["information", "system", "implementation", "systems"])
+
+# Prompt for output directory
+output_dir = input("Enter the directory where you want to save the files: ")
+os.makedirs(output_dir, exist_ok=True)
 
 df = pd.read_csv("scopus.csv", engine='python')
 df.fillna("", inplace=True)
@@ -20,7 +28,7 @@ df["combined_text"] = df["Title"] + " " + df["Abstract"] + " " + df["Author Keyw
 def remove_stopwords(text):
     return " ".join([word for word in text.split() if word.lower() not in stop_words])
 
-#Could use month or quarter as granularity if we had complete dates.
+# Could use month or quarter as granularity if we had complete dates.
 # df["Publication_Period"] = df["Publication_Date"].dt.to_period("M")  # Monthly granularity
 # df["Publication_Period"] = df["Publication_Date"].dt.to_period("Q")  # Quarterly granularity
 # df["Publication_Period"] = df["Publication_Date"].dt.to_period("Y")  # Yearly granularity
@@ -29,27 +37,65 @@ def remove_stopwords(text):
 df["clean_text"] = df["combined_text"].apply(remove_stopwords)
 docs = df["clean_text"].tolist()
 
-model = BERTopic(verbose=True, nr_topics=8) 
+seed = 42
+random.seed(seed)
+np.random.seed(seed)
+
+hdbscan_model = HDBSCAN(
+    min_cluster_size=5,
+    metric='euclidean',
+    cluster_selection_method='eom',
+    prediction_data=True
+)
+
+vectorizer_model = CountVectorizer(stop_words="english", max_features=10000)
+
+umap_model = UMAP(n_neighbors=15, n_components=2, metric='euclidean', random_state=seed)
+
+model = BERTopic(
+    verbose=True,
+    nr_topics=12,
+    hdbscan_model=hdbscan_model,
+    vectorizer_model=vectorizer_model,
+    umap_model=umap_model
+)
 
 topics, probabilities = model.fit_transform(docs)
-topics_over_time = model.topics_over_time(docs, dates)
-topics_over_time.to_csv("topics_over_time.csv", index=False)
-topics_over_time_fig = model.visualize_topics_over_time(topics_over_time)
-topics_over_time_fig.write_html("topics_over_time.html")
 
+# Topic visualization
+topics_fig = model.visualize_topics()
+topics_fig.write_html(os.path.join(output_dir, "topics.html"))
+
+# Topic barchart
+barchart_fig = model.visualize_barchart()
+barchart_fig.write_html(os.path.join(output_dir, "barchart.html"))
+
+# Hierarchical topic visualization
+hierarchical_fig = model.visualize_hierarchy()
+hierarchical_fig.write_html(os.path.join(output_dir, "hierarchical.html"))
+
+# Term frequency visualization
+term_freq_fig = model.visualize_term_rank()
+term_freq_fig.write_html(os.path.join(output_dir, "term_frequency.html"))
+
+# Topics over time
+topics_over_time = model.topics_over_time(docs, dates)
+topics_over_time.to_csv(os.path.join(output_dir, "topics_over_time.csv"), index=False)
+topics_over_time_fig = model.visualize_topics_over_time(topics_over_time)
+topics_over_time_fig.write_html(os.path.join(output_dir, "topics_over_time.html"))
+
+# Save topic scores for each document
 if isinstance(probabilities, list) and isinstance(probabilities[0], (list, np.ndarray)):
-    num_topics = len(probabilities[0])  
+    num_topics = len(probabilities[0])
     topic_scores_df = pd.DataFrame(probabilities, columns=[f"Topic_{i}" for i in range(num_topics)])
 else:
-    topic_scores_df = pd.DataFrame({"Dominant_Topic_Probability": probabilities})  # Fallback for single probability case
-df = pd.concat([df, topic_scores_df], axis=1)
-df.to_csv("document_topic_scores.csv", index=False)
+    topic_scores_df = pd.DataFrame({"Dominant_Topic_Probability": probabilities})
 
+df = pd.concat([df, topic_scores_df], axis=1)
+df.to_csv(os.path.join(output_dir, "topic_scores.csv"), index=False)
+
+# Save topic words and their scores
 topic_info = model.get_topic_info()
 topic_words = {topic: model.get_topic(topic) for topic in topic_info["Topic"].tolist() if topic != -1}
 topic_words_df = pd.DataFrame([{"Topic": topic, "Words": ", ".join([f"{word[0]} ({word[1]:.4f})" for word in words])} for topic, words in topic_words.items()])
-topic_words_df.to_csv("new_topics.csv", index=False)
-
-print("Topic evolution saved as 'topics_over_time.html'")
-print("Document topic scores saved as 'document_topic_scores.csv'")
-print("Topics and their words saved as 'new_topics.csv'")
+topic_words_df.to_csv(os.path.join(output_dir, "topics.csv"), index=False)
