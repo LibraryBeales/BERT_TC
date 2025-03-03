@@ -37,9 +37,13 @@ def remove_stopwords(text):
 df["clean_text"] = df["combined_text"].apply(remove_stopwords)
 docs = df["clean_text"].tolist()
 
-seed = 42
+seed = random.randint(0, 2**32 - 1)
 random.seed(seed)
 np.random.seed(seed)
+
+with open(os.path.join(output_dir, "seed.txt"), "w") as f:
+    f.write(f"Random Seed: {seed}\n")
+print(f"Random Seed used: {seed}")
 
 hdbscan_model = HDBSCAN(
     min_cluster_size=5,
@@ -54,37 +58,30 @@ umap_model = UMAP(n_neighbors=15, n_components=2, metric='euclidean', random_sta
 
 model = BERTopic(
     verbose=True,
-    nr_topics=12,
     hdbscan_model=hdbscan_model,
     vectorizer_model=vectorizer_model,
-    umap_model=umap_model
+    umap_model=umap_model #,nr_topics=12
 )
 
 topics, probabilities = model.fit_transform(docs)
 
-# Topic visualization
 topics_fig = model.visualize_topics()
 topics_fig.write_html(os.path.join(output_dir, "topics.html"))
 
-# Topic barchart
 barchart_fig = model.visualize_barchart()
 barchart_fig.write_html(os.path.join(output_dir, "barchart.html"))
 
-# Hierarchical topic visualization
 hierarchical_fig = model.visualize_hierarchy()
 hierarchical_fig.write_html(os.path.join(output_dir, "hierarchical.html"))
 
-# Term frequency visualization
 term_freq_fig = model.visualize_term_rank()
 term_freq_fig.write_html(os.path.join(output_dir, "term_frequency.html"))
 
-# Topics over time
 topics_over_time = model.topics_over_time(docs, dates)
 topics_over_time.to_csv(os.path.join(output_dir, "topics_over_time.csv"), index=False)
 topics_over_time_fig = model.visualize_topics_over_time(topics_over_time)
 topics_over_time_fig.write_html(os.path.join(output_dir, "topics_over_time.html"))
 
-# Save topic scores for each document
 if isinstance(probabilities, list) and isinstance(probabilities[0], (list, np.ndarray)):
     num_topics = len(probabilities[0])
     topic_scores_df = pd.DataFrame(probabilities, columns=[f"Topic_{i}" for i in range(num_topics)])
@@ -94,7 +91,6 @@ else:
 df = pd.concat([df, topic_scores_df], axis=1)
 df.to_csv(os.path.join(output_dir, "topic_scores.csv"), index=False)
 
-# Save topic words and their scores
 topic_info = model.get_topic_info()
 topic_words = {topic: model.get_topic(topic) for topic in topic_info["Topic"].tolist() if topic != -1}
 topic_words_df = pd.DataFrame([{"Topic": topic, "Words": ", ".join([f"{word[0]} ({word[1]:.4f})" for word in words])} for topic, words in topic_words.items()])
