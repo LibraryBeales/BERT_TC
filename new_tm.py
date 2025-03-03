@@ -60,7 +60,8 @@ model = BERTopic(
     verbose=True,
     hdbscan_model=hdbscan_model,
     vectorizer_model=vectorizer_model,
-    umap_model=umap_model #,nr_topics=12
+    umap_model=umap_model,
+    nr_topics=12
 )
 
 topics, probabilities = model.fit_transform(docs)
